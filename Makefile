@@ -25,7 +25,7 @@ $(BINDIR)/$(TARGET): $(OBJECTS)
 
 $(OBJECTS): $(OBJDIR)/%.o : $(SRCDIR)/%.c
 	@$(CC) $(CFLAGS) -c $< -o $@
-	@echo "*****COMPILED "$<" SUCCESSFULLY*****"
+	@echo "*****COMPILATION COMPLETE*****"
 
 .PHONY: run
 run:

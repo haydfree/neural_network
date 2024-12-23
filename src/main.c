@@ -13,6 +13,8 @@ typedef struct Node {
     double gradient;
     double delta;
     int idx;
+    int input_size;
+    int coefficients_size;
 } Node;
 
 typedef struct Layer {
@@ -30,7 +32,7 @@ enum activation_type { STEP, RELU, LEAKY_RELU, SIGMOID, TANH };
 
 Network *network = NULL;
 
-Node *init_node(int input_size, int node_idx) {
+Node *init_node(int input_size, int node_idx, int coefficients_size) {
     int i;
 
     Node *new_node = malloc(sizeof(Node));
@@ -41,7 +43,7 @@ Node *init_node(int input_size, int node_idx) {
     }
 
     new_node->input = malloc(sizeof(double) * input_size);
-    new_node->coefficients = malloc(sizeof(double) * input_size);
+    new_node->coefficients = malloc(sizeof(double) * coefficients_size);
 
     if (new_node->input == NULL || new_node->coefficients == NULL) {
         printf("Node input or coefficients allocation failed. \n");
@@ -65,11 +67,13 @@ Node *init_node(int input_size, int node_idx) {
     new_node->gradient = 0.0;
     new_node->delta = 0.0;
     new_node->idx = node_idx;
+    new_node->input_size = input_size;
+    new_node->coefficients_size = coefficients_size;
 
     return new_node;
 }
 
-Layer *init_layer(int input_size, int number_of_nodes, int layer_idx) {
+Layer *init_layer(int input_size, int number_of_nodes, int layer_idx, int coefficients_size) {
     int node_idx;
 
     Layer *new_layer = malloc(sizeof(Layer));
@@ -87,7 +91,7 @@ Layer *init_layer(int input_size, int number_of_nodes, int layer_idx) {
     }
 
     for (node_idx = 0; node_idx < number_of_nodes; node_idx++) {
-        new_layer->nodes[node_idx] = init_node(input_size, node_idx);
+        new_layer->nodes[node_idx] = init_node(input_size, node_idx, coefficients_size);
     }
 
     new_layer->num_nodes = number_of_nodes;
@@ -113,11 +117,20 @@ Network *init_network(int structure[], int number_of_layers) {
         exit(1);
     }
 
-    for (i = 1; i < number_of_layers; i++) {
-        new_network->layers[i] = init_layer(structure[i-1], structure[i], i);
-    }
+    int coefficients_size;
 
-    new_network->layers[0] = init_layer(0, structure[0], 0);
+    for (i = 0; i < number_of_layers; i++) {
+        if (i == number_of_layers - 1) {
+            coefficients_size = 0;
+            new_network->layers[i] = init_layer(structure[i-1], structure[i], i, coefficients_size); 
+        } else if (i == 0) {
+            coefficients_size = structure[i+1];
+            new_network->layers[i] = init_layer(i, structure[i], i, coefficients_size);
+        } else {
+            coefficients_size = structure[i+1];  
+            new_network->layers[i] = init_layer(structure[i-1], structure[i], i, coefficients_size);
+        }
+    }
 
     new_network->num_layers = number_of_layers;
 
@@ -151,6 +164,7 @@ void free_network(Network *network) {
 }
 
 void print_node(Node *node) {
+    
     printf("NODE %d: intercept: %.2f, output: %.2f, activation: %.2f, error: %.2f, gradient: %.2f, delta: %.2f\n", 
             node->idx,
             node->intercept,
@@ -159,13 +173,22 @@ void print_node(Node *node) {
             node->error,
             node->gradient,
             node->delta);
+    
+    int i;
+    for (i = 0; i < node->input_size; i++) {
+        printf("input %d: %.5f\n", i, node->input[i]);
+    }
+
+    for (i = 0; i < node->coefficients_size; i++) {
+        printf("coe %d: %.5f\n", i, node->coefficients[i]);
+    }
+
 }
 
 void print_layer(Layer *layer) {
     printf("LAYER %d: num_nodes: %d\n", 
             layer->idx, 
             layer->num_nodes);
-
     int i;
     for (i = 0; i < layer->num_nodes; i++) {
         print_node(layer->nodes[i]);     
@@ -220,6 +243,10 @@ double calculate_output(double *inputs, double *coefficients, double intercept, 
 
     return sum;
 }
+
+/*double forward_propagation() {
+    
+}*/
 
 int main() {
     srand((unsigned int)time(NULL));	
