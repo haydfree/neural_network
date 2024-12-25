@@ -19,6 +19,7 @@ typedef struct Node {
 
 typedef struct Layer {
     Node **nodes;
+    double *input;
     int num_nodes;
     int idx;
 } Layer;
@@ -32,6 +33,8 @@ enum activation_type { STEP, RELU, LEAKY_RELU, SIGMOID, TANH };
 
 Network *network = NULL;
 
+double initial_input[] = {0, 1};
+
 Node *init_node(int input_size, int node_idx, int coefficients_size) {
     int i;
 
@@ -42,11 +45,11 @@ Node *init_node(int input_size, int node_idx, int coefficients_size) {
         exit(1);
     }
 
-    new_node->input = malloc(sizeof(double) * input_size);
+    new_node->input = NULL;
     new_node->coefficients = malloc(sizeof(double) * coefficients_size);
 
-    if (new_node->input == NULL || new_node->coefficients == NULL) {
-        printf("Node input or coefficients allocation failed. \n");
+    if (new_node->coefficients == NULL) {
+        printf("Coefficients allocation failed. \n");
 
         free(new_node->coefficients);
         free(new_node->input);
@@ -55,8 +58,7 @@ Node *init_node(int input_size, int node_idx, int coefficients_size) {
         exit(1);
     }
 
-    for (i = 0; i < input_size; i++) {
-        new_node->input[i] = 0.0;
+    for (i = 0; i < coefficients_size; i++) {
         new_node->coefficients[i] = 0.0;
     }
 
@@ -90,8 +92,14 @@ Layer *init_layer(int input_size, int number_of_nodes, int layer_idx, int coeffi
         exit(1);
     }
 
+    if (layer_idx > 0) { 
+        new_layer->input = malloc(sizeof(double) * input_size); 
+    }
+    else { new_layer->input = initial_input; }
+
     for (node_idx = 0; node_idx < number_of_nodes; node_idx++) {
         new_layer->nodes[node_idx] = init_node(input_size, node_idx, coefficients_size);
+        new_layer->nodes[node_idx]->input = new_layer->input;
     }
 
     new_layer->num_nodes = number_of_nodes;
@@ -101,7 +109,7 @@ Layer *init_layer(int input_size, int number_of_nodes, int layer_idx, int coeffi
 }
 
 Network *init_network(int structure[], int number_of_layers) {
-    int i;
+    int i, j;
 
     Network *new_network = malloc(sizeof(Network));
 
@@ -129,6 +137,12 @@ Network *init_network(int structure[], int number_of_layers) {
         } else {
             coefficients_size = structure[i+1];  
             new_network->layers[i] = init_layer(structure[i-1], structure[i], i, coefficients_size);
+        }
+    }
+
+    for (i = 1; i < number_of_layers; i++) {
+        for (j = 0; j < structure[i-1]; j++) {
+            new_network->layers[i]->input[j] = new_network->layers[i-1]->nodes[j]->activation;     
         }
     }
 
@@ -203,6 +217,21 @@ void print_network(Network *network) {
     }
 }
 
+double calculate_output(double *inputs, double *coefficients, double intercept, int input_size) {
+    double sum = 0.0;
+
+    /* apply coefficients to all inputs and add to sum */
+    int i;
+    for (i = 0; i < input_size; i++) {
+        sum = sum + inputs[i] * coefficients[i];
+    }
+
+    /* add intercept to sum */
+    sum = sum + intercept;
+
+    return sum;
+}
+
 double activation_function(double x, enum activation_type type) {
     /* step (linear = bad), type = 0 */
     if (type == STEP) { return (x > 0.0) ? 1.0 : 0.0; }
@@ -226,35 +255,35 @@ double activation_function(double x, enum activation_type type) {
     exit(1);
 }
 
-double calculate_output(double *inputs, double *coefficients, double intercept, int input_size, int activation_type) {
-    double sum = 0.0;
-
-    /* apply coefficients to all inputs and add to sum */
-    int i;
-    for (i = 0; i < input_size; i++) {
-        sum = sum + inputs[i] * coefficients[i];
+double forward_propagation(Network *network) {
+    int layer_idx, node_idx;
+    double last_activation;
+    for (layer_idx = 0; layer_idx < network->num_layers; layer_idx++) {
+        for (node_idx = 0; node_idx < network->layers[layer_idx]->num_nodes; node_idx++) {
+            Node *node = network->layers[layer_idx]->nodes[node_idx];
+            node->output = calculate_output(
+                node->input,
+                node->coefficients,
+                node->intercept,
+                node->input_size
+            );
+            node->activation = activation_function(node->output, TANH);
+            last_activation = node->activation;
+        }
     }
-
-    /* add intercept to sum */
-    sum = sum + intercept;
-
-    /* apply activation function to sum */
-    sum = activation_function(sum, activation_type);
-
-    return sum;
+    return last_activation;
 }
-
-/*double forward_propagation() {
-    
-}*/
 
 int main() {
     srand((unsigned int)time(NULL));	
 
     int a[3] = {2, 2, 1};
 
-    Network *network = init_network(a, 3);
+    network = init_network(a, 3);
     print_network(network);
+
+    double output = forward_propagation(network);
+    printf("output: %.5f\n", output);
     
     return 0;
 }

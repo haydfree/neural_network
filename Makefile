@@ -3,11 +3,11 @@ TARGET   = neural_network
 
 # compiler and compiler flags
 CC       = gcc
-CFLAGS   = -std=c89 -Wall -Wextra -I.
+CFLAGS   = -std=c89 -Wall -Wextra -I. -g
 
 # linker and linker flags
 LINKER   = gcc
-LFLAGS   = -Wall -I. -lm
+LFLAGS   = -Wall -I. -lm -g
 
 SRCDIR   = src
 INCDIR   = inc
