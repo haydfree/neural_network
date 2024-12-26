@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <assert.h>
+
 
 typedef struct Node {
     double *input;
@@ -12,6 +14,7 @@ typedef struct Node {
     double error;
     double gradient;
     double delta;
+    double expected_output;
     int idx;
     int input_size;
     int coefficients_size;
@@ -255,9 +258,38 @@ double activation_function(double x, enum activation_type type) {
     exit(1);
 }
 
-double forward_propagation(Network *network) {
+double activation_derivative(double x, enum activation_type type) {
+    /* step (linear = bad), type = 0 */
+    if (type == STEP) { return 0.0; }
+    
+    /* rectified linear unit (ReLU), type = 1 */
+    if (type == RELU) { return x > 0.0 ? 1.0 : 0.0; }
+
+    /* leaky rectified linear unit (ReLU), type = 2 */
+    if (type == LEAKY_RELU) { 
+        double leaky_slope = 0.01;
+        return x > 0.0 ? 1.0 : leaky_slope; 
+    }
+    
+    /* sigmoid, type = 3 */
+    if (type == SIGMOID) { return x * (1.0 - x); }
+
+    /* hyperbolic tangent, type = 4 */
+    if (type == TANH) { return 1.0 - pow(x, 2); }
+
+    printf("Improper activation function type: %d", type);
+    exit(1);
+}
+
+void give_input(Network *network, double *input) {
+    int i;
+    for (i = 0; i < network->layers[0]->num_nodes; i++) {
+        network->layers[0]->nodes[i]->input = input;
+    }
+}
+
+void forward_propagation(Network *network) {
     int layer_idx, node_idx;
-    double last_activation;
     for (layer_idx = 0; layer_idx < network->num_layers; layer_idx++) {
         for (node_idx = 0; node_idx < network->layers[layer_idx]->num_nodes; node_idx++) {
             Node *node = network->layers[layer_idx]->nodes[node_idx];
@@ -268,22 +300,55 @@ double forward_propagation(Network *network) {
                 node->input_size
             );
             node->activation = activation_function(node->output, TANH);
-            last_activation = node->activation;
         }
     }
-    return last_activation;
+}
+
+void back_propagation(Network *network, double learning_rate) {
+    int layer_idx, node_idx, weight_idx, next_node_idx;
+    for (layer_idx = network->num_layers - 1; layer_idx >= 0; layer_idx--) {
+        Layer *layer = network->layers[layer_idx];
+        
+        for (node_idx = 0; node_idx < layer->num_nodes; node_idx++) {
+            Node *node = layer->nodes[node_idx];
+            
+            if (layer_idx == network->num_layers - 1) {
+                node->error = node->activation - node->expected_output;
+
+                node->gradient = node->error * activation_derivative(node->activation, TANH);
+            } else {
+                double error_sum = 0.0;
+                for (next_node_idx = 0; next_node_idx < network->layers[layer_idx + 1]->num_nodes; next_node_idx++) {
+                    Node *next_node = network->layers[layer_idx + 1]->nodes[next_node_idx];
+                    error_sum += next_node->gradient * next_node->coefficients[node_idx];
+                }
+
+                node->gradient = error_sum * activation_derivative(node->activation, TANH);
+            }
+             
+            for (weight_idx = 0; weight_idx < node->input_size; weight_idx++) {
+                node->coefficients[weight_idx] -= learning_rate * node->gradient * node->input[weight_idx];
+            }
+            
+            node->intercept -= learning_rate * node->gradient;
+        }
+    }
 }
 
 int main() {
     srand((unsigned int)time(NULL));	
 
-    int a[3] = {2, 2, 1};
+    double learning_rate = 0.01;
+    double train_set[4][3] = {{0, 0, 0}, {1, 1, 0}, {0, 1, 1}, {1, 0, 1}};
 
-    network = init_network(a, 3);
-    print_network(network);
+    int structure[3] = {2, 2, 1};
 
-    double output = forward_propagation(network);
-    printf("output: %.5f\n", output);
-    
+    network = init_network(structure, 3);
+
+    give_input(network, (double *) train_set);
+
+    forward_propagation(network);
+    back_propagation(network, learning_rate);
+
     return 0;
 }
