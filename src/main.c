@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
-#include <assert.h>
 
 
 typedef struct Node {
@@ -35,8 +34,6 @@ typedef struct Network {
 enum activation_type { STEP, RELU, LEAKY_RELU, SIGMOID, TANH };
 
 Network *network = NULL;
-
-double initial_input[] = {0, 1};
 
 Node *init_node(int input_size, int node_idx, int coefficients_size) {
     int i;
@@ -95,10 +92,7 @@ Layer *init_layer(int input_size, int number_of_nodes, int layer_idx, int coeffi
         exit(1);
     }
 
-    if (layer_idx > 0) { 
-        new_layer->input = malloc(sizeof(double) * input_size); 
-    }
-    else { new_layer->input = initial_input; }
+    new_layer->input = malloc(sizeof(double) * input_size); 
 
     for (node_idx = 0; node_idx < number_of_nodes; node_idx++) {
         new_layer->nodes[node_idx] = init_node(input_size, node_idx, coefficients_size);
@@ -162,7 +156,6 @@ void free_node(Node *node) {
 
 void free_layer(Layer *layer) {
     int i;
-    /* for each node in this layer */
     for (i = 0; i < layer->num_nodes; i++) {
         free_node(layer->nodes[i]);
     }
@@ -172,7 +165,6 @@ void free_layer(Layer *layer) {
 
 void free_network(Network *network) {
     int layer_idx;
-    /* for each layer in network */
     for (layer_idx = 0; layer_idx < network->num_layers; layer_idx++) {
         free_layer(network->layers[layer_idx]);
     }
@@ -220,65 +212,58 @@ void print_network(Network *network) {
     }
 }
 
+void print_output(Network *network) {
+    printf("OUTPUT: %.5f \n", network->layers[network->num_layers - 1]->nodes[0]->output);
+}
+
 double calculate_output(double *inputs, double *coefficients, double intercept, int input_size) {
     double sum = 0.0;
-
-    /* apply coefficients to all inputs and add to sum */
     int i;
     for (i = 0; i < input_size; i++) {
         sum = sum + inputs[i] * coefficients[i];
     }
 
-    /* add intercept to sum */
     sum = sum + intercept;
 
     return sum;
 }
 
 double activation_function(double x, enum activation_type type) {
-    /* step (linear = bad), type = 0 */
-    if (type == STEP) { return (x > 0.0) ? 1.0 : 0.0; }
-    
-    /* rectified linear unit (ReLU), type = 1 */
-    if (type == RELU) { return (x > 0.0) ? x : 0.0; }
-
-    /* leaky rectified linear unit (ReLU), type = 2 */
-    if (type == LEAKY_RELU) {
-        double leaky_slope = 0.01;
-        return (x > 0.0) ? x : leaky_slope * x;
+    switch (type) {
+        case STEP:
+            return x > 0.0 ? 1.0 : 0.0;
+        case RELU:
+            return x > 0.0 ? x : 0.0;
+        case LEAKY_RELU:
+            double leaky_slope = 0.01;
+            return x > 0.0 ? x : leaky_slope * x;
+        case SIGMOID:
+            return 1.0 / (1.0 + exp(-x));
+        case TANH:
+            return (exp(x) - exp(-x)) / (exp(x) + exp(-x));
+        default:
+            printf("Improper activation function type: %d", type);
+            exit(1);
     }
-    
-    /* sigmoid, type = 3 */
-    if (type == SIGMOID) { return 1.0 / (1.0 + exp(-x)); }
-
-    /* hyperbolic tangent, type = 4 */
-    if (type == TANH) { return (exp(x) - exp(-x)) / (exp(x) + exp(-x)); }
-
-    printf("Improper activation function type: %d", type);
-    exit(1);
 }
 
 double activation_derivative(double x, enum activation_type type) {
-    /* step (linear = bad), type = 0 */
-    if (type == STEP) { return 0.0; }
-    
-    /* rectified linear unit (ReLU), type = 1 */
-    if (type == RELU) { return x > 0.0 ? 1.0 : 0.0; }
-
-    /* leaky rectified linear unit (ReLU), type = 2 */
-    if (type == LEAKY_RELU) { 
-        double leaky_slope = 0.01;
-        return x > 0.0 ? 1.0 : leaky_slope; 
+    switch (STEP) {
+        case STEP:
+            return 0.0;
+        case RELU:
+            return x > 0.0 ? 1.0 : 0.0;
+        case LEAKY_RELU:
+            double leaky_slope = 0.01;
+            return x > 0.0 ? 1.0 : leaky_slope;
+        case SIGMOID:
+            return x * (1.0 - x);
+        case TANH:
+            return 1.0 - x * x;
+        default:
+            printf("Improper activation function type: %d", type);
+            exit(1);
     }
-    
-    /* sigmoid, type = 3 */
-    if (type == SIGMOID) { return x * (1.0 - x); }
-
-    /* hyperbolic tangent, type = 4 */
-    if (type == TANH) { return 1.0 - pow(x, 2); }
-
-    printf("Improper activation function type: %d", type);
-    exit(1);
 }
 
 void give_input(Network *network, double *input) {
@@ -308,13 +293,10 @@ void back_propagation(Network *network, double learning_rate) {
     int layer_idx, node_idx, weight_idx, next_node_idx;
     for (layer_idx = network->num_layers - 1; layer_idx >= 0; layer_idx--) {
         Layer *layer = network->layers[layer_idx];
-        
         for (node_idx = 0; node_idx < layer->num_nodes; node_idx++) {
             Node *node = layer->nodes[node_idx];
-            
             if (layer_idx == network->num_layers - 1) {
                 node->error = node->activation - node->expected_output;
-
                 node->gradient = node->error * activation_derivative(node->activation, TANH);
             } else {
                 double error_sum = 0.0;
@@ -322,16 +304,25 @@ void back_propagation(Network *network, double learning_rate) {
                     Node *next_node = network->layers[layer_idx + 1]->nodes[next_node_idx];
                     error_sum += next_node->gradient * next_node->coefficients[node_idx];
                 }
-
                 node->gradient = error_sum * activation_derivative(node->activation, TANH);
             }
-             
             for (weight_idx = 0; weight_idx < node->input_size; weight_idx++) {
                 node->coefficients[weight_idx] -= learning_rate * node->gradient * node->input[weight_idx];
             }
-            
             node->intercept -= learning_rate * node->gradient;
         }
+    }
+}
+
+void run(Network *network, double *initial_input, double learning_rate, int number_epochs) {
+    int i = 0;
+    give_input(network, initial_input);
+    while (i < number_epochs) {
+        forward_propagation(network);
+        back_propagation(network, learning_rate);
+        print_output(network);
+        
+        i++;
     }
 }
 
@@ -340,15 +331,10 @@ int main() {
 
     double learning_rate = 0.01;
     double train_set[4][3] = {{0, 0, 0}, {1, 1, 0}, {0, 1, 1}, {1, 0, 1}};
-
     int structure[3] = {2, 2, 1};
 
     network = init_network(structure, 3);
-
-    give_input(network, (double *) train_set);
-
-    forward_propagation(network);
-    back_propagation(network, learning_rate);
+    run(network, (double *) train_set, learning_rate, 10);
 
     return 0;
 }
